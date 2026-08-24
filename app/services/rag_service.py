@@ -26,8 +26,9 @@ async def answer_question(question: str, doc_type_filter: str | None, db: Sessio
         
     retriever = vector_store.as_retriever(search_kwargs=search_kwargs)
     
+    # Atualizado para o identificador estável mais recente do Gemini Flash
     llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model="gemini-3.6-flash", 
         temperature=0.1,
         google_api_key=settings.GOOGLE_API_KEY
     )
