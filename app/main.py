@@ -10,7 +10,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="API para gestão e consulta de legislação pública e ouvidoria utilizando RAG."
+    description="API para consulta e análise de legislação e matérias legislativas da Câmara de Vereadores de Santana do Livramento utilizando RAG."
 )
 
 app.include_router(api_router, prefix="/api/v1")

@@ -1,11 +1,13 @@
 import os
+import sys
 import requests
 from pathlib import Path
 
 # Configurações
-API_URL = "http://127.0.0.1:8000/api/v1/documents/upload"
-PASTA_DOCUMENTOS = "./pautas_camara" # Crie essa pasta e coloque os PDFs dentro
-TIPO_DOCUMENTO = "Pauta_Legislativa"
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000/api/v1/documents/upload")
+PASTA_DOCUMENTOS = os.getenv("PASTA_DOCUMENTOS", "./pautas_camara")
+# Permite passar o tipo de documento via linha de comando (ex: python batch_upload.py Mocao)
+TIPO_DOCUMENTO = sys.argv[1] if len(sys.argv) > 1 else "Pauta_Sessao"
 
 def iniciar_upload_em_lote():
     # Garante que a pasta existe
@@ -22,7 +24,9 @@ def iniciar_upload_em_lote():
         print(f"Nenhum arquivo .pdf encontrado na pasta '{PASTA_DOCUMENTOS}'.")
         return
 
-    print(f"Foram encontrados {len(arquivos_pdf)} documentos. Iniciando indexação no RAG...\n")
+    print(f"Foram encontrados {len(arquivos_pdf)} documentos.")
+    print(f"Tipo de documento atribuído: '{TIPO_DOCUMENTO}'")
+    print("Iniciando indexação no RAG...\n")
 
     sucessos = 0
     erros = 0

@@ -8,7 +8,7 @@ router = APIRouter()
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_document(
     file: UploadFile = File(...),
-    doc_type: str = Form("Edital"),
+    doc_type: str = Form("Pauta_Sessao"),
     db: Session = Depends(get_db)
 ):
     if not file.filename.endswith(".pdf"):

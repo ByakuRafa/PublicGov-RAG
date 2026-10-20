@@ -9,7 +9,7 @@ class DocumentModel(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String(255), nullable=False)
-    doc_type = Column(String(50), nullable=False)  # tipos: edital, pautas, ouvidoria, camara-explica
+    doc_type = Column(String(50), nullable=False)  # tipos: Pauta_Sessao, Lei_Municipal, Projeto_de_Lei, Mocao, Ata_Sessao, etc.
     chunks_count = Column(Integer, default=0)
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
