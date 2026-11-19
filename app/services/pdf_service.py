@@ -13,6 +13,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from app.core.config import settings
 from app.db.models import DocumentModel
 from app.db.vector_store import get_vector_store
+from app.services.retrieval_service import invalidate_bm25_cache
 
 def _extract_text_with_ocr(file_path: str) -> list[Document]:
     """Converte as páginas do PDF em imagens e aplica OCR via Tesseract."""
@@ -40,7 +41,8 @@ def _extract_text_with_ocr(file_path: str) -> list[Document]:
 
 async def process_and_index_pdf(file: UploadFile, doc_type: str, db: Session) -> DocumentModel:
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    file_path = os.path.join(settings.UPLOAD_DIR, file.filename)
+    safe_filename = os.path.basename(file.filename or "documento.pdf")
+    file_path = os.path.join(settings.UPLOAD_DIR, safe_filename)
     
     # 1. Salvar o arquivo localmente
     with open(file_path, "wb") as buffer:
@@ -54,7 +56,7 @@ async def process_and_index_pdf(file: UploadFile, doc_type: str, db: Session) ->
     
     # 3. Fallback: Se não houver texto legível, aplica OCR
     if not valid_docs:
-        print(f"⚠️ Nenhum texto nativo encontrado em '{file.filename}'. Executando OCR...")
+        print(f"⚠️ Nenhum texto nativo encontrado em '{safe_filename}'. Executando OCR...")
         valid_docs = _extract_text_with_ocr(file_path)
 
     if not valid_docs:
@@ -66,7 +68,7 @@ async def process_and_index_pdf(file: UploadFile, doc_type: str, db: Session) ->
     # 4. Enriquecer metadados para busca e citação
     for doc in valid_docs:
         doc.metadata["doc_type"] = doc_type
-        doc.metadata["source_file"] = file.filename
+        doc.metadata["source_file"] = safe_filename
         
     # 5. Chunking
     text_splitter = RecursiveCharacterTextSplitter(
@@ -75,13 +77,14 @@ async def process_and_index_pdf(file: UploadFile, doc_type: str, db: Session) ->
     )
     chunks = text_splitter.split_documents(valid_docs)
     
-    # 6. Indexação no ChromaDB
+    # 6. Indexação no PostgreSQL + pgvector
     vector_store = get_vector_store()
     vector_store.add_documents(chunks)
+    invalidate_bm25_cache()
     
     # 7. Persistência no Banco Relacional
     doc_record = DocumentModel(
-        filename=file.filename,
+        filename=safe_filename,
         doc_type=doc_type,
         chunks_count=len(chunks)
     )

@@ -1,4 +1,4 @@
-#!/var/home/Byuki/Documentos/Dev/PublicGov-RAG/venv/bin/python
+#!/var/home/Byuki/Documentos/GitHub/PublicGov-RAG/venv/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys

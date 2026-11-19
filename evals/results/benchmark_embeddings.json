@@ -1,0 +1,35 @@
+{
+  "results": [
+    {
+      "embedding": "MiniLM-L12-v2 (384d)",
+      "model_id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "dim": 384,
+      "mode": "vector_only",
+      "recall_at_4": 0.8,
+      "mrr_at_4": 0.7056,
+      "avg_latency_ms": 40.0,
+      "index_time_s": 5.26
+    },
+    {
+      "embedding": "MiniLM-L12-v2 (384d)",
+      "model_id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "dim": 384,
+      "mode": "hybrid_rrf",
+      "recall_at_4": 0.9333,
+      "mrr_at_4": 0.8667,
+      "avg_latency_ms": 50.5,
+      "index_time_s": 5.26
+    },
+    {
+      "embedding": "MiniLM-L12-v2 (384d)",
+      "model_id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "dim": 384,
+      "mode": "hybrid_rrf_rerank",
+      "recall_at_4": 0.9333,
+      "mrr_at_4": 0.7889,
+      "avg_latency_ms": 2510.2,
+      "index_time_s": 5.26
+    }
+  ],
+  "skipped": []
+}

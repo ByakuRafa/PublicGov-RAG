@@ -73,31 +73,37 @@ flowchart TD
         C --> E[Texto Extraído & Metadados doc_type]
         D --> E
         E --> F[RecursiveCharacterTextSplitter<br/>chunk_size: 1000 | overlap: 150]
-        F --> G[HuggingFace Embeddings<br/>paraphrase-multilingual-MiniLM-L12-v2]
-        G --> H[(ChromaDB Vector Store)]
-        E --> I[(SQLite DocumentModel)]
+        F --> G[Embedding Factory<br/>MiniLM-L12-v2 ou EmbeddingGemma 2]
+        G --> H[(PostgreSQL + pgvector)]
+        E --> I[(PostgreSQL DocumentModel)]
     end
 
-    subgraph Consulta ["2. Pipeline de Consulta RAG"]
-        J[Pergunta do Cidadão / Servidor] --> K[Filtro opcional por doc_type]
-        K --> L[Retriever Semântico ChromaDB k=4]
-        H -. Busca Vetorial .-> L
-        L --> M[Formatação do Contexto Restrito]
-        M --> N[Prompt Especializado do Oráculo]
-        J --> N
-        N --> O[LLM Google Gemini Flash]
-        O --> P[Resposta Fundamentada + Fontes Citadas]
-        P --> Q[(SQLite QueryLogModel - Auditoria)]
+    subgraph Consulta ["2. Agente LangGraph, Busca Híbrida & MCP"]
+        J[Pergunta via REST /api/v1/query/ask ou MCP /mcp] --> K[Agente LangGraph - Roteador & Tool Calling]
+        K --> L1[Busca Vetorial pgvector]
+        K --> L2[Busca Lexical BM25]
+        H -.-> L1
+        H -.-> L2
+        L1 --> M[Reciprocal Rank Fusion - RRF]
+        L2 --> M
+        M --> N[Cross-Encoder Reranker - FlashRank]
+        N --> O[LLM gemini-2.5-flash]
+        O --> P[Resposta Fundamentada + Fontes + tools_used]
+        P --> Q[(PostgreSQL QueryLogModel - Auditoria)]
+        K -. Callbacks .-> R[Langfuse Observability]
     end
 ```
 
 ### Principais Componentes:
-* **API REST**: [FastAPI](https://fastapi.tiangolo.com/) com validação estrita via [Pydantic V2](https://docs.pydantic.dev/).
-* **Orquestração RAG**: [LangChain](https://www.langchain.com/) gerenciando chains, templates de prompt e integração com retrievers.
-* **Modelo de Linguagem (LLM)**: `gemini-3.6-flash` via `langchain-google-genai` com temperatura baixa (`0.1`) para respostas factuais e estritamente aderentes aos documentos indexados.
-* **Modelo de Embeddings**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` executado localmente, otimizado para a língua portuguesa.
-* **Vector Store**: [ChromaDB](https://www.trychroma.com/) com persistência local em `./storage/chroma_db`.
-* **Banco Relacional & Auditoria**: SQLite (`./storage/publicgov.db`) gerenciado via [SQLAlchemy](https://www.sqlalchemy.org/) para log de consultas e catálogo de documentos.
+* **API REST & Servidor MCP**: [FastAPI](https://fastapi.tiangolo.com/) com validação estrita via [Pydantic V2](https://docs.pydantic.dev/) e servidor **MCP (Model Context Protocol)** via [FastMCP](https://gofastmcp.com/) montado em `/mcp` (e executável via `stdio`).
+* **Agente & Orquestração**: [LangGraph](https://www.langchain.com/langgraph) com *tool calling* para rotear entre consulta legislativa, pautas/moções, catálogo de documentos ou pedido de esclarecimento ao cidadão.
+* **Busca Híbrida & Reranking**: Fusão de busca vetorial (`pgvector`) + busca lexical (`rank_bm25` com tokenização para termos legislativos exatos como `PLC nº 67/2025` e `Resolução nº 1.252/2016`) via **Reciprocal Rank Fusion (RRF)**, seguida de **Cross-Encoder Reranker** (`FlashRank`).
+* **Modelo de Linguagem (LLM)**: `gemini-2.5-flash` via `langchain-google-genai` (configurável em `GEMINI_MODEL`) com temperatura baixa (`0.1`) para respostas factuais e estritamente aderentes aos documentos indexados.
+* **Modelos de Embeddings (Configuráveis & Benchmarkáveis)**:
+  * Padrão leve: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384d).
+  * Opcional de alta precisão: `google/embeddinggemma-2` com *Task-Steered Prompts* (`SearchQuery` / `Document`) e truncamento **Matryoshka** (`128`, `256`, `512` ou `768` dimensões) em coleções isoladas no `pgvector`.
+* **Banco Relacional & Vector Store Unificados**: **PostgreSQL 16 + `pgvector`** gerenciado via SQLAlchemy e `langchain-postgres` (`PGVector`).
+* **Observabilidade & Evals**: Tracing opcional via **Langfuse** (configurado pelo `.env`) e suíte automatizada em `evals/` com **RAGAS** (*Faithfulness* e *Answer Relevancy*) + benchmark comparativo de embeddings.
 
 ---
 
@@ -112,12 +118,23 @@ O método com Docker já inclui o ambiente Linux com **Poppler** e **Tesseract O
    cd PublicGov-RAG
    ```
 
-2. Crie e configure o arquivo `.env`:
+2. Crie e configure o arquivo `.env` a partir de `.env.example`:
    ```env
    GOOGLE_API_KEY=sua_chave_do_google_ai_studio_aqui
+   GEMINI_MODEL=gemini-2.5-flash
+
+   # Opcional: Langfuse Observability
+   LANGFUSE_PUBLIC_KEY=
+   LANGFUSE_SECRET_KEY=
+   LANGFUSE_HOST=https://cloud.langfuse.com
+
+   # Opcional: EmbeddingGemma 2 (requer aceite de licença no HuggingFace)
+   # EMBEDDING_MODEL=google/embeddinggemma-2
+   # EMBEDDING_DIM=256
+   # HF_TOKEN=hf_...
    ```
 
-3. Suba o container:
+3. Suba os containers (PostgreSQL + `pgvector` e API):
    ```bash
    docker compose up -d --build
    ```
@@ -201,65 +218,101 @@ curl -X POST "http://localhost:8000/api/v1/query/ask" \
 ```json
 {
   "question": "Qual é a justificativa da Moção de Apoio referente ao teto do MEI?",
-  "answer": "A Moção de Apoio ao Projeto de Lei Complementar nº 67/2025 justifica que o número de Microempreendedores Individuais (MEIs) no Brasil dobrou entre 2018 e 2025. Contudo, o teto anual de faturamento de R$ 81 mil encontra-se defasado pela inflação desde 2018, podendo desestimular o crescimento e formalização da economia. A proposta propõe elevar o limite para R$ 150 mil anuais com reajuste automático pelo IPCA.",
+  "answer": "A Moção de Apoio ao Projeto de Lei Complementar nº 67/2025 justifica que o número de Microempreendedores Individuais (MEIs) no Brasil dobrou entre 2018 e 2025. Contudo, o teto anual de faturamento de R$ 81 mil encontra-se defasado pela inflação desde 2018, podendo desestimular o crescimento e formalização da economia.",
   "sources": [
     "4429.pdf"
+  ],
+  "tools_used": [
+    "consultar_pautas_e_votacoes"
   ]
 }
 ```
 
 ---
 
-## 📡 8. Endpoints da API
+## 📡 8. Endpoints da API e Servidor MCP
 
 | Método | Endpoint | Descrição |
 | :--- | :--- | :--- |
-| `GET` | `/health` | Verifica a saúde operacional da API. |
-| `POST` | `/api/v1/documents/upload` | Faz upload de um documento PDF, extrai texto (com OCR fallback), gera chunks e indexa no ChromaDB. |
-| `POST` | `/api/v1/query/ask` | Realiza a consulta em linguagem natural utilizando o contexto dos documentos legislativos recuperados. |
-| `GET` | `/api/v1/query/history` | Retorna o histórico de auditoria das perguntas e respostas processadas pelo sistema. |
+| `GET` | `/health` | Verifica saúde da API, modelo Gemini e configuração de embeddings/`pgvector`. |
+| `GET` | `/api/v1/documents/` | Lista os documentos legislativos catalogados no PostgreSQL. |
+| `POST` | `/api/v1/documents/upload` | Faz upload de um PDF, extrai texto (com OCR fallback), gera chunks e indexa no `pgvector`. |
+| `POST` | `/api/v1/query/ask` | Executa o agente LangGraph com busca híbrida (BM25 + vetorial + RRF) e reranking. |
+| `GET` | `/api/v1/query/history` | Retorna o histórico de auditoria das perguntas, ferramentas acionadas e respostas. |
+| `ALL` | `/mcp` | Endpoint HTTP/Streamable do servidor **MCP** (`FastMCP`). |
 | `GET` | `/docs` | Interface gráfica interativa Swagger UI para teste de todos os endpoints. |
+
+### Conectando via MCP (`stdio` para Claude Desktop / Cursor)
+```bash
+python -m app.mcp_server
+```
+Ferramentas expostas pelo MCP: `consultar_legislacao_municipal`, `consultar_pautas_e_votacoes`, `listar_documentos_camara` e `perguntar_oraculo_legislativo`.
 
 ---
 
-## 📂 9. Estrutura do Repositório
+## 🧪 9. Evals Automatizadas (RAGAS) e Benchmark de Embeddings
+
+A pasta `evals/` contém um dataset de 18 perguntas reais (incluindo casos fora de escopo) baseadas nos documentos da Câmara de Livramento:
+
+```bash
+# 1. Benchmark comparativo de retrieval (Vetorial vs Híbrido+RRF vs Reranker; MiniLM vs EmbeddingGemma 2)
+python -m evals.benchmark_embeddings --models minilm --reindex
+
+# Para comparar MiniLM vs EmbeddingGemma 2 (768d e 256d Matryoshka) — requer HF_TOKEN no .env:
+python -m evals.benchmark_embeddings --models minilm gemma-768 gemma-256 --reindex
+
+# 2. Suíte completa com métricas RAGAS (Faithfulness e Answer Relevancy)
+python -m evals.run_eval
+```
+
+---
+
+## 📂 10. Estrutura do Repositório
 
 ```text
 PublicGov-RAG/
 ├── app/
 │   ├── api/
-│   │   ├── deps.py                 # Injeção de dependências (Sessão de Banco de Dados)
+│   │   ├── deps.py                 # Injeção de dependências (Sessão PostgreSQL)
 │   │   └── v1/
-│   │       ├── documents.py        # Endpoint de upload e indexação de PDFs
-│   │       ├── query.py            # Endpoints de consulta RAG e histórico
+│   │       ├── documents.py        # Upload, indexação e listagem de PDFs
+│   │       ├── query.py            # Consulta via agente e histórico de auditoria
 │   │       └── router.py           # Agregador de rotas da API v1
 │   ├── core/
-│   │   └── config.py               # Configurações do sistema via Pydantic Settings
+│   │   ├── config.py               # Configurações via Pydantic Settings (.env)
+│   │   └── observability.py        # CallbackHandler opcional do Langfuse
 │   ├── db/
 │   │   ├── models.py               # Modelos relacionais (DocumentModel, QueryLogModel)
-│   │   ├── session.py              # Sessão SQLAlchemy do SQLite
-│   │   └── vector_store.py         # Configuração do ChromaDB e embeddings HuggingFace
+│   │   ├── session.py              # Engine e sessão SQLAlchemy (PostgreSQL)
+│   │   └── vector_store.py         # PGVector no PostgreSQL + leitura para BM25
 │   ├── schemas/
-│   │   └── query.py                # Modelos de validação de requisição/resposta (Pydantic)
+│   │   └── query.py                # Schemas Pydantic de requisição/resposta
 │   ├── services/
-│   │   ├── pdf_service.py          # Lógica de extração de PDFs, OCR (Tesseract) e chunking
-│   │   └── rag_service.py          # Lógica do RAG, prompt do Oráculo e integração com Gemini
-│   └── main.py                     # Ponto de entrada FastAPI e ciclo de vida da aplicação
+│   │   ├── agent_service.py        # Agente LangGraph com tool calling e roteamento
+│   │   ├── embedding_factory.py    # Singleton de embeddings (MiniLM e EmbeddingGemma 2)
+│   │   ├── pdf_service.py          # Extração de PDFs, OCR (Tesseract) e chunking
+│   │   ├── rag_service.py          # Orquestração da consulta e auditoria no banco
+│   │   └── retrieval_service.py    # Busca híbrida (BM25 + pgvector + RRF) + FlashRank
+│   ├── mcp_server.py               # Servidor MCP (FastMCP) HTTP e stdio
+│   └── main.py                     # Ponto de entrada FastAPI + mount /mcp
+├── evals/
+│   ├── dataset.json                # 18 perguntas reais (in-scope e out-of-scope)
+│   ├── sample_corpus.json          # Chunks extraídos para benchmark reproduzível
+│   ├── benchmark_embeddings.py     # Benchmark MiniLM vs EmbeddingGemma 2 (Matryoshka)
+│   └── run_eval.py                 # Avaliação end-to-end com RAGAS
 ├── pautas_camara/                  # Pasta para depósito de PDFs para indexação em lote
-├── storage/                        # Diretório persistido de uploads, ChromaDB e SQLite
-│   ├── chroma_db/
-│   ├── uploads/
-│   └── publicgov.db
+├── storage/uploads/                # PDFs enviados para a API
 ├── batch_upload.py                 # Script para automação de upload em lote
-├── docker-compose.yml              # Orquestração do container Docker
-├── .dockerfile                     # Receita do container com Poppler e Tesseract OCR
+├── docker-compose.yml              # Orquestração API + PostgreSQL/pgvector
+├── .dockerfile                     # Container Python 3.12 com Poppler e Tesseract OCR
+├── .env.example                    # Modelo de variáveis de ambiente
 ├── requirements.txt                # Dependências Python do projeto
 └── README.md                       # Documentação completa do projeto
 ```
 
 ---
 
-## 🔒 10. Governança e Melhores Práticas
+## 🔒 11. Governança e Melhores Práticas
 
 1. **Rastreabilidade e Fontes Citadas**: Toda resposta gerada pelo sistema devolve obrigatoriamente a lista de arquivos fonte utilizados (`sources`), permitindo que servidores e cidadãos verifiquem o documento original para fins formais.
 2. **Minimização de Alucinações**: O prompt do sistema orienta expressamente o modelo a informar quando uma matéria não for localizada no contexto documental indexado, evitando suposições fora da legislação formal.

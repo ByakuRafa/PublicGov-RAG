@@ -1,0 +1,146 @@
+[
+  {
+    "id": "q01",
+    "question": "Qual é o valor do crédito especial proposto no projeto para a Secretaria Municipal de Obras (SMO) e qual contrato de repasse o fundamenta?",
+    "ground_truth": "O projeto autoriza a abertura de crédito especial no valor de R$ 384.205,00 para a Secretaria Municipal de Obras (SMO), fundamentado no Contrato de Repasse nº 958690/2024/MCIDADES/CAIXA.",
+    "expected_source": "2686.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q02",
+    "question": "Qual é o código do recurso e o elemento de despesa indicados na abertura de crédito especial de R$ 384.205,00?",
+    "ground_truth": "O elemento de despesa é 3.44.90.51 (Obras e Instalações) na rubrica 06.01.04.122.0006.3864, utilizando o Recurso 1700 (Outras Transferências de Convênios ou Instrumentos Congêneres da União).",
+    "expected_source": "2686.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q03",
+    "question": "Qual dispositivo da Lei Orgânica do Município é citado no projeto que autoriza crédito especial de R$ 384.205,00?",
+    "ground_truth": "É citado o artigo 102, inciso IV, da Lei Orgânica do Município de Sant'Ana do Livramento.",
+    "expected_source": "2686.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q04",
+    "question": "Qual lei municipal embasa o projeto de contratação emergencial temporária para a Secretaria Municipal de Planejamento e Meio Ambiente?",
+    "ground_truth": "O projeto de contratação emergencial temporária para a Secretaria Municipal de Planejamento e Meio Ambiente é fundamentado na Lei Municipal nº 7.316/2018.",
+    "expected_source": "2716.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q05",
+    "question": "Quantas vagas para Fiscal Ambiental, Biólogo e Geólogo estão previstas na contratação emergencial da Secretaria Municipal de Planejamento e Meio Ambiente?",
+    "ground_truth": "Estão previstas 06 vagas para Fiscal Ambiental, 02 vagas para Biólogo e 01 vaga para Geólogo.",
+    "expected_source": "2716.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q06",
+    "question": "Quais engenharias têm vagas previstas no projeto de contratação emergencial para a área de Planejamento e Meio Ambiente?",
+    "ground_truth": "O projeto prevê vagas para Engenheiro Florestal (01), Engenheiro Eletricista (01), Engenheiro de Bioprocessos e Biotecnologia na Área Ambiental (01) e Engenheiro Civil (02), além de Arquiteto e Urbanista (02).",
+    "expected_source": "2716.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q07",
+    "question": "Qual vereador assina o Projeto de Lei que institui a Política Municipal de Economia Solidária de Sant'Ana do Livramento?",
+    "ground_truth": "O Projeto de Lei que institui a Política Municipal de Economia Solidária é de autoria do vereador Dagberto Reis, datado de 18 de agosto de 2026.",
+    "expected_source": "2758.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q08",
+    "question": "Quais são algumas características dos Empreendimentos Econômicos Solidários previstas no Art. 6º do Projeto de Lei de Economia Solidária?",
+    "ground_truth": "Entre as características previstas no Art. 6º estão: organização coletiva e democrática, gestão autônoma e participativa, exercício de atividade econômica de interesse comum, divisão equitativa dos resultados, realização periódica de assembleias ou reuniões deliberativas e atuação voltada à geração de trabalho, renda e inclusão produtiva.",
+    "expected_source": "2758.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q09",
+    "question": "Quais instrumentos integram a Política Municipal de Economia Solidária conforme o Art. 10 do projeto?",
+    "ground_truth": "Os instrumentos incluem ações de educação, formação, capacitação e assistência técnica, estímulo à pesquisa e tecnologias sociais, incentivo à comercialização e comércio justo, apoio a feiras e exposições, incentivo à economia circular, acesso a tecnologias digitais, cadastro e mapeamento de empreendimentos, conferências/fóruns e parcerias.",
+    "expected_source": "2758.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q10",
+    "question": "Qual anexo e qual lei são alterados pelo Projeto de Lei referente às diretrizes orçamentárias para 2026?",
+    "ground_truth": "O Projeto de Lei altera o Anexo VIII da Lei nº 8.482, de 31 de outubro de 2025, que dispõe sobre as diretrizes para elaboração e execução da Lei Orçamentária para 2026.",
+    "expected_source": "2764.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q11",
+    "question": "Que órgão municipal teve o planejamento da despesa com pessoal detalhado nos anexos do projeto que altera a Lei nº 8.482/2025?",
+    "ground_truth": "O Departamento de Água e Esgotos (DAE) consta com o Planejamento da Despesa com Pessoal para 2026 nos anexos do projeto, considerando anuênio e reajuste salarial para 2026.",
+    "expected_source": "2764.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q12",
+    "question": "Qual é o número e o objetivo do Projeto de Lei Ordinária fundamentado no Artigo 115 da Resolução 1.252/16?",
+    "ground_truth": "Trata-se do Projeto de Lei Ordinária nº 07/2026, apresentado com fulcro no Artigo 115 do Regimento Interno (Resolução nº 1.252/16), que estabelece normas de transparência, publicidade em meio eletrônico e rastreabilidade na execução das emendas parlamentares.",
+    "expected_source": "2784.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q13",
+    "question": "Quais princípios constitucionais são citados no Art. 2º do projeto sobre execução das emendas parlamentares?",
+    "ground_truth": "O Art. 2º determina que a execução das emendas parlamentares observará os princípios constitucionais da legalidade, impessoalidade, moralidade, publicidade, eficiência e transparência administrativa.",
+    "expected_source": "2784.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q14",
+    "question": "A qual proposição federal se refere a Moção de Apoio nº 02/2025 e qual artigo do Regimento Interno a fundamenta?",
+    "ground_truth": "A Moção de Apoio nº 02/2025 refere-se ao Projeto de Lei Complementar nº 67/2025 (PLC nº 67/2025) e é fundamentada no art. 120 da Resolução nº 1.252/2016.",
+    "expected_source": "4429.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q15",
+    "question": "Qual é a justificativa da Moção de Apoio referente ao Projeto de Lei Complementar nº 67/2025 sobre o teto do MEI?",
+    "ground_truth": "A justificativa aponta que o número de MEIs no Brasil dobrou entre 2018 e 2025, mas o limite anual de faturamento de R$ 81 mil, fixado desde 2018, está defasado pela inflação, podendo estimular o subfaturamento e limitar o crescimento de pequenos negócios.",
+    "expected_source": "4429.pdf",
+    "doc_type_filter": null,
+    "in_scope": true
+  },
+  {
+    "id": "q16",
+    "question": "Qual é o valor das diárias de viagem e o cronograma de férias dos servidores internos da Câmara Municipal?",
+    "ground_truth": "Essa informação refere-se a rotinas administrativas internas da Câmara (diárias e férias de servidores), que está fora do escopo legislativo e não consta nos documentos indexados.",
+    "expected_source": null,
+    "doc_type_filter": null,
+    "in_scope": false
+  },
+  {
+    "id": "q17",
+    "question": "Como recorrer de uma autuação de trânsito aplicada pela Prefeitura Municipal?",
+    "ground_truth": "Atos administrativos de trânsito do Poder Executivo estão fora do escopo legislativo do sistema e não constam nos registros indexados.",
+    "expected_source": null,
+    "doc_type_filter": null,
+    "in_scope": false
+  },
+  {
+    "id": "q18",
+    "question": "Qual foi a decisão do Supremo Tribunal Federal no processo judicial sobre o tema?",
+    "ground_truth": "Decisões judiciais de tribunais externos estão fora do escopo do Poder Legislativo Municipal e a informação não foi localizada nos registros indexados.",
+    "expected_source": null,
+    "doc_type_filter": null,
+    "in_scope": false
+  }
+]
