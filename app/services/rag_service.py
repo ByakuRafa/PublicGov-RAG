@@ -22,6 +22,10 @@ async def answer_question(
         answer=agent_result["answer"],
         doc_type_filter=doc_type_filter,
         tools_used=",".join(agent_result["tools_used"]) if agent_result["tools_used"] else None,
+        latency_ms=agent_result.get("latency_ms"),
+        prompt_tokens=agent_result.get("prompt_tokens"),
+        completion_tokens=agent_result.get("completion_tokens"),
+        estimated_cost_usd=agent_result.get("estimated_cost_usd"),
     )
     db.add(query_log)
     db.commit()
@@ -31,4 +35,8 @@ async def answer_question(
         "answer": agent_result["answer"],
         "sources": agent_result["sources"],
         "tools_used": agent_result["tools_used"],
+        "latency_ms": agent_result.get("latency_ms"),
+        "prompt_tokens": agent_result.get("prompt_tokens"),
+        "completion_tokens": agent_result.get("completion_tokens"),
+        "estimated_cost_usd": agent_result.get("estimated_cost_usd"),
     }

@@ -35,5 +35,40 @@ services:
       - .env
     restart: unless-stopped
 
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: publicgov_langfuse_db
+    profiles: ["langfuse"]
+    environment:
+      POSTGRES_USER: ${LANGFUSE_PG_USER:-langfuse}
+      POSTGRES_PASSWORD: ${LANGFUSE_PG_PASSWORD:-langfuse}
+      POSTGRES_DB: ${LANGFUSE_PG_DB:-langfuse}
+    volumes:
+      - langfuse_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${LANGFUSE_PG_USER:-langfuse} -d ${LANGFUSE_PG_DB:-langfuse}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: publicgov_langfuse
+    profiles: ["langfuse"]
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://${LANGFUSE_PG_USER:-langfuse}:${LANGFUSE_PG_PASSWORD:-langfuse}@langfuse-db:5432/${LANGFUSE_PG_DB:-langfuse}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-publicgov-langfuse-nextauth-secret}
+      SALT: ${LANGFUSE_SALT:-publicgov-langfuse-salt}
+      NEXTAUTH_URL: ${LANGFUSE_NEXTAUTH_URL:-http://localhost:3000}
+      TELEMETRY_ENABLED: "false"
+    restart: unless-stopped
+
 volumes:
   pgdata:
+  langfuse_pgdata:

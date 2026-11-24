@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, DateTime, Text
+from sqlalchemy import Column, DateTime, Float, Integer, String, Text, inspect, text
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -23,4 +23,28 @@ class QueryLogModel(Base):
     answer = Column(Text, nullable=False)
     doc_type_filter = Column(String(50), nullable=True)
     tools_used = Column(String(255), nullable=True)
+    latency_ms = Column(Float, nullable=True)
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    estimated_cost_usd = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+def ensure_query_logs_schema(target_engine) -> None:
+    """Garante colunas de telemetria em bancos existentes sem perda de dados."""
+    inspector = inspect(target_engine)
+    if "query_logs" not in inspector.get_table_names():
+        return
+
+    existing_columns = {col["name"] for col in inspector.get_columns("query_logs")}
+    telemetry_columns = {
+        "latency_ms": "DOUBLE PRECISION" if target_engine.dialect.name == "postgresql" else "FLOAT",
+        "prompt_tokens": "INTEGER",
+        "completion_tokens": "INTEGER",
+        "estimated_cost_usd": "DOUBLE PRECISION" if target_engine.dialect.name == "postgresql" else "FLOAT",
+    }
+
+    with target_engine.begin() as conn:
+        for col_name, col_type in telemetry_columns.items():
+            if col_name not in existing_columns:
+                conn.execute(text(f"ALTER TABLE query_logs ADD COLUMN {col_name} {col_type}"))

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     # LLM Google Gemini
     GOOGLE_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
+    LLM_INPUT_COST_PER_1M_USD: Optional[float] = None
+    LLM_OUTPUT_COST_PER_1M_USD: Optional[float] = None
 
     # Embeddings configuráveis (ex.: MiniLM ou google/embeddinggemma-2)
     EMBEDDING_MODEL: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"

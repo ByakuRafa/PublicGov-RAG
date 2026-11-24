@@ -3,7 +3,8 @@ from fastapi import FastAPI
 
 from app.api.v1.router import api_router
 from app.core.config import settings
-from app.db.models import Base
+from app.core.observability import is_langfuse_enabled
+from app.db.models import Base, ensure_query_logs_schema
 from app.db.session import engine
 from app.mcp_server import mcp
 
@@ -14,6 +15,7 @@ mcp_app = mcp.http_app(path="/")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_query_logs_schema(engine)
     async with mcp_app.lifespan(app):
         yield
 
@@ -41,4 +43,5 @@ def health_check():
         "embedding_model": settings.EMBEDDING_MODEL,
         "embedding_dim": settings.EMBEDDING_DIM,
         "vector_backend": "pgvector",
+        "langfuse_enabled": is_langfuse_enabled(),
     }

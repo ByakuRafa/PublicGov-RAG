@@ -102,8 +102,8 @@ flowchart TD
 * **Modelos de Embeddings (Configuráveis & Benchmarkáveis)**:
   * Padrão leve: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384d).
   * Opcional de alta precisão: `google/embeddinggemma-2` com *Task-Steered Prompts* (`SearchQuery` / `Document`) e truncamento **Matryoshka** (`128`, `256`, `512` ou `768` dimensões) em coleções isoladas no `pgvector`.
-* **Banco Relacional & Vector Store Unificados**: **PostgreSQL 16 + `pgvector`** gerenciado via SQLAlchemy e `langchain-postgres` (`PGVector`).
-* **Observabilidade & Evals**: Tracing opcional via **Langfuse** (configurado pelo `.env`) e suíte automatizada em `evals/` com **RAGAS** (*Faithfulness* e *Answer Relevancy*) + benchmark comparativo de embeddings.
+* **Banco Relacional & Vector Store Unificados**: **PostgreSQL 16 + `pgvector`** gerenciado via SQLAlchemy e `langchain-postgres` (`PGVector`), incluindo auditoria com telemetria (`latency_ms`, `prompt_tokens`, `completion_tokens` e `estimated_cost_usd`) em `QueryLogModel`.
+* **Observabilidade & Evals**: Tracing nativo do LangChain via **Langfuse** (Cloud ou self-hosted via `docker compose --profile langfuse up -d`) e suíte automatizada em `evals/` com **Golden Dataset** (`evals/golden_dataset.json`), comparação de prompts (`v1` simples vs. `v2` restritivo) via **RAGAS** (*Faithfulness* e *Answer Relevancy*), precisão de citação de fontes, taxa de abstenção e benchmark de embeddings.
 
 ---
 
@@ -138,6 +138,12 @@ O método com Docker já inclui o ambiente Linux com **Poppler** e **Tesseract O
    ```bash
    docker compose up -d --build
    ```
+
+   *(Opcional)* Para subir também o **Langfuse self-hosted** em `http://localhost:3000`:
+   ```bash
+   docker compose --profile langfuse up -d --build
+   ```
+   Em seguida, crie o projeto no painel do Langfuse, copie as chaves `LANGFUSE_PUBLIC_KEY` e `LANGFUSE_SECRET_KEY` para o `.env` com `LANGFUSE_HOST=http://localhost:3000` e reinicie o serviço `api`.
 
 A API estará acessível em `http://localhost:8000`.
 
@@ -181,15 +187,15 @@ A documentação interativa (Swagger UI) estará disponível em:
 
 ## 📥 6. Como Indexar Documentos
 
-### Indexação em Lote (Batch)
-Para processar múltiplos documentos de uma vez (como pautas e moções):
+### Indexação em Lote (Batch) nas 8 categorias `doc_type`
+Para processar múltiplos documentos de uma vez:
 
-1. Deposite os arquivos `.pdf` na pasta `pautas_camara/`.
+1. Deposite os arquivos `.pdf` na pasta `pautas_camara/` (ou organize em subpastas nomeadas com cada uma das 8 categorias: `pautas_camara/Pauta_Sessao/`, `pautas_camara/Ata_Sessao/`, `pautas_camara/Projeto_de_Lei/`, `pautas_camara/Lei_Municipal/`, `pautas_camara/Mocao/`, `pautas_camara/Parecer_Comissao/`, `pautas_camara/Requerimento_Legislativo/`, `pautas_camara/Regimento_e_LOM/`).
 2. Execute o script de envio automatizado:
    ```bash
    python batch_upload.py
    ```
-O script enviará cada PDF para a API, que realizará a validação, extração (com OCR se necessário), chunking e inserção no banco vetorial.
+O script enviará cada PDF para a API, que realizará a validação, extração (com OCR se necessário), chunking, inserção no banco vetorial e exibirá o resumo de cobertura por `doc_type`.
 
 ### Indexação Individual via API
 Você pode enviar documentos individuais via `curl` ou pela documentação do Swagger:
@@ -237,8 +243,9 @@ curl -X POST "http://localhost:8000/api/v1/query/ask" \
 | `GET` | `/health` | Verifica saúde da API, modelo Gemini e configuração de embeddings/`pgvector`. |
 | `GET` | `/api/v1/documents/` | Lista os documentos legislativos catalogados no PostgreSQL. |
 | `POST` | `/api/v1/documents/upload` | Faz upload de um PDF, extrai texto (com OCR fallback), gera chunks e indexa no `pgvector`. |
-| `POST` | `/api/v1/query/ask` | Executa o agente LangGraph com busca híbrida (BM25 + vetorial + RRF) e reranking. |
-| `GET` | `/api/v1/query/history` | Retorna o histórico de auditoria das perguntas, ferramentas acionadas e respostas. |
+| `POST` | `/api/v1/query/ask` | Executa o agente LangGraph com busca híbrida (BM25 + vetorial + RRF), reranking e telemetria. |
+| `GET` | `/api/v1/query/history` | Retorna o histórico de auditoria das perguntas, ferramentas acionadas, latência, tokens, custo e respostas. |
+| `GET` | `/api/v1/query/metrics` | Retorna o consolidado de telemetria (`total_queries`, `avg_latency_ms`, tokens e custo estimado). |
 | `ALL` | `/mcp` | Endpoint HTTP/Streamable do servidor **MCP** (`FastMCP`). |
 | `GET` | `/docs` | Interface gráfica interativa Swagger UI para teste de todos os endpoints. |
 
@@ -250,20 +257,33 @@ Ferramentas expostas pelo MCP: `consultar_legislacao_municipal`, `consultar_paut
 
 ---
 
-## 🧪 9. Evals Automatizadas (RAGAS) e Benchmark de Embeddings
+## 🧪 9. Evals Automatizadas (Golden Dataset + RAGAS) e Benchmark de Embeddings
 
-A pasta `evals/` contém um dataset de 18 perguntas reais (incluindo casos fora de escopo) baseadas nos documentos da Câmara de Livramento:
+A pasta `evals/` contém o **Golden Dataset** ([`evals/golden_dataset.json`](evals/golden_dataset.json)) com **30 perguntas reais** (25 respondíveis + 5 sem resposta/fora de escopo para testar abstenção e bloqueio de alucinação):
 
 ```bash
-# 1. Benchmark comparativo de retrieval (Vetorial vs Híbrido+RRF vs Reranker; MiniLM vs EmbeddingGemma 2)
+# 1. Verificar cobertura atual de documentos indexados nas 8 categorias doc_type
+python -m evals.run_eval --coverage-only
+
+# 2. Suíte comparativa Prompt v1 (simples) vs. Prompt v2 (restritivo) com RAGAS
+python -m evals.run_eval --prompts v1 v2
+
+# 3. Apenas métricas de recuperação, citação de fontes e abstenção (sem juiz RAGAS)
+python -m evals.run_eval --prompts v1 v2 --skip-ragas
+
+# 4. Benchmark comparativo de retrieval (Vetorial vs Híbrido+RRF vs Reranker; MiniLM vs EmbeddingGemma 2)
 python -m evals.benchmark_embeddings --models minilm --reindex
-
-# Para comparar MiniLM vs EmbeddingGemma 2 (768d e 256d Matryoshka) — requer HF_TOKEN no .env:
-python -m evals.benchmark_embeddings --models minilm gemma-768 gemma-256 --reindex
-
-# 2. Suíte completa com métricas RAGAS (Faithfulness e Answer Relevancy)
-python -m evals.run_eval
 ```
+
+Os relatórios são salvos automaticamente em `evals/results/latest_report.json` e `evals/results/prompt_comparison.md`.
+
+### Registro das Métricas Reais (após execução com `GOOGLE_API_KEY` e lote completo indexado)
+
+| Métrica | Valor Obtido (`v2`) | Observação |
+| :--- | :---: | :--- |
+| **Documentos indexados** | _executar `--coverage-only` após upload_ | Contagem real em `DocumentModel` (`documents`) |
+| **Fidelidade ao contexto (*Faithfulness*)** | _executar `evals.run_eval --prompts v1 v2`_ | Calculado pelo juiz RAGAS |
+| **Precisão na citação de fontes** | _executar `evals.run_eval --prompts v1 v2`_ | Citação explícita de `source_file` + bloqueio de falsa citação |
 
 ---
 
@@ -280,15 +300,17 @@ PublicGov-RAG/
 │   │       └── router.py           # Agregador de rotas da API v1
 │   ├── core/
 │   │   ├── config.py               # Configurações via Pydantic Settings (.env)
-│   │   └── observability.py        # CallbackHandler opcional do Langfuse
+│   │   ├── constants.py            # As 8 categorias oficiais de doc_type
+│   │   ├── observability.py        # CallbackHandler e flush do Langfuse
+│   │   └── telemetry.py            # Extração de tokens e estimativa de custo USD
 │   ├── db/
-│   │   ├── models.py               # Modelos relacionais (DocumentModel, QueryLogModel)
+│   │   ├── models.py               # Modelos relacionais + migração de telemetria
 │   │   ├── session.py              # Engine e sessão SQLAlchemy (PostgreSQL)
 │   │   └── vector_store.py         # PGVector no PostgreSQL + leitura para BM25
 │   ├── schemas/
 │   │   └── query.py                # Schemas Pydantic de requisição/resposta
 │   ├── services/
-│   │   ├── agent_service.py        # Agente LangGraph com tool calling e roteamento
+│   │   ├── agent_service.py        # Agente LangGraph (prompts v1/v2, tool calling, telemetria)
 │   │   ├── embedding_factory.py    # Singleton de embeddings (MiniLM e EmbeddingGemma 2)
 │   │   ├── pdf_service.py          # Extração de PDFs, OCR (Tesseract) e chunking
 │   │   ├── rag_service.py          # Orquestração da consulta e auditoria no banco
@@ -296,10 +318,11 @@ PublicGov-RAG/
 │   ├── mcp_server.py               # Servidor MCP (FastMCP) HTTP e stdio
 │   └── main.py                     # Ponto de entrada FastAPI + mount /mcp
 ├── evals/
-│   ├── dataset.json                # 18 perguntas reais (in-scope e out-of-scope)
+│   ├── golden_dataset.json         # 30 perguntas reais (25 respondíveis + 5 abstenção)
+│   ├── dataset.json                # Dataset inicial (18 perguntas)
 │   ├── sample_corpus.json          # Chunks extraídos para benchmark reproduzível
 │   ├── benchmark_embeddings.py     # Benchmark MiniLM vs EmbeddingGemma 2 (Matryoshka)
-│   └── run_eval.py                 # Avaliação end-to-end com RAGAS
+│   └── run_eval.py                 # Evals comparativas (v1 vs v2) com RAGAS e citação de fontes
 ├── pautas_camara/                  # Pasta para depósito de PDFs para indexação em lote
 ├── storage/uploads/                # PDFs enviados para a API
 ├── batch_upload.py                 # Script para automação de upload em lote

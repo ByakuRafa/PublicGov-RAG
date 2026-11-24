@@ -12,3 +12,7 @@ class QueryResponse(BaseModel):
     answer: str
     sources: List[str]
     tools_used: List[str] = Field(default_factory=list)
+    latency_ms: Optional[float] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    estimated_cost_usd: Optional[float] = None
