@@ -131,16 +131,20 @@ def rerank_documents(
         }
         for idx, doc in enumerate(documents)
     ]
-    ranker = _get_reranker(settings.RERANKER_MODEL)
-    rerank_req = RerankRequest(query=query, passages=passages)
-    results = ranker.rerank(rerank_req)
+    try:
+        ranker = _get_reranker(settings.RERANKER_MODEL)
+        rerank_req = RerankRequest(query=query, passages=passages)
+        results = ranker.rerank(rerank_req)
 
-    reranked: List[Document] = []
-    for item in results[:top_n]:
-        meta = dict(item.get("meta") or {})
-        meta["rerank_score"] = round(float(item.get("score", 0.0)), 6)
-        reranked.append(Document(page_content=item["text"], metadata=meta))
-    return reranked
+        reranked: List[Document] = []
+        for item in results[:top_n]:
+            meta = dict(item.get("meta") or {})
+            meta["rerank_score"] = round(float(item.get("score", 0.0)), 6)
+            reranked.append(Document(page_content=item["text"], metadata=meta))
+        return reranked
+    except Exception as exc:
+        # Fallback defensivo caso modelo ou ambiente FlashRank apresente falha
+        return documents[:top_n]
 
 
 def hybrid_retrieve_and_rerank(

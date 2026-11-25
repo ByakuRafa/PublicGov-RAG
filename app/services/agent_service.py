@@ -232,6 +232,9 @@ async def run_legislative_agent(
     prompt_version: str = "v2",
 ) -> Dict[str, Any]:
     """Executa o agente LangGraph com busca híbrida, reranking, telemetria e tracing Langfuse."""
+    if doc_type_filter and doc_type_filter.strip().lower() in ("string", "null", "none"):
+        doc_type_filter = None
+
     token_db = _db_session_ctx.set(db)
     token_filter = _doc_filter_ctx.set(doc_type_filter)
 

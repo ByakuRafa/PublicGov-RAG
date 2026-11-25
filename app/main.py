@@ -1,5 +1,8 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -32,6 +35,14 @@ app = FastAPI(
 
 app.include_router(api_router, prefix="/api/v1")
 app.mount("/mcp", mcp_app)
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+@app.get("/", include_in_schema=False)
+def serve_workbench():
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/health", tags=["Health Check"])

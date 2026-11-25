@@ -8,8 +8,12 @@ from app.core.config import settings
 
 # Valores de referência em USD por 1 milhão de tokens (input_per_1m, output_per_1m)
 MODEL_PRICING_PER_1M_USD: Dict[str, Tuple[float, float]] = {
+    "gemini-3.5-flash-lite": (0.10, 0.40),
+    "gemini-3.5-flash": (0.15, 0.60),
+    "gemini-2.5-flash-lite": (0.10, 0.40),
     "gemini-2.5-flash": (0.15, 0.60),
     "gemini-2.5-pro": (1.25, 10.00),
+    "gemini-2.0-flash-lite": (0.075, 0.30),
     "gemini-2.0-flash": (0.10, 0.40),
     "gemini-1.5-flash": (0.075, 0.30),
     "gemini-1.5-pro": (1.25, 5.00),
@@ -78,12 +82,24 @@ def _resolve_model_pricing(model_name: str) -> Optional[Tuple[float, float]]:
         )
 
     normalized = (model_name or "").strip().lower()
+    if normalized.startswith("models/"):
+        normalized = normalized[len("models/"):]
+
     if normalized in MODEL_PRICING_PER_1M_USD:
         return MODEL_PRICING_PER_1M_USD[normalized]
 
     for prefix, pricing in MODEL_PRICING_PER_1M_USD.items():
         if normalized.startswith(prefix):
             return pricing
+
+    # Fallback por família Gemini para variantes/versões mais novas
+    if "gemini" in normalized:
+        if "flash-lite" in normalized:
+            return (0.10, 0.40)
+        if "flash" in normalized:
+            return (0.15, 0.60)
+        if "pro" in normalized:
+            return (1.25, 10.00)
     return None
 
 

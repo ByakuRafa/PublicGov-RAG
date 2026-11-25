@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+import logging
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.api.deps import get_db
@@ -6,15 +7,24 @@ from app.schemas.query import QueryRequest, QueryResponse
 from app.services.rag_service import answer_question
 from app.db.models import QueryLogModel
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 @router.post("/ask", response_model=QueryResponse)
 async def ask_oracle(request: QueryRequest, db: Session = Depends(get_db)):
-    return await answer_question(
-        question=request.question,
-        doc_type_filter=request.doc_type_filter,
-        db=db
-    )
+    try:
+        return await answer_question(
+            question=request.question,
+            doc_type_filter=request.doc_type_filter,
+            db=db
+        )
+    except Exception as exc:
+        logger.exception("Erro ao processar consulta legislativa no Oráculo: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Falha ao processar consulta: {str(exc)}",
+        )
 
 @router.get("/history")
 def get_query_history(limit: int = 10, db: Session = Depends(get_db)):

@@ -39,6 +39,7 @@ from app.services.agent_service import (
     run_legislative_agent,
 )
 from app.services.rag_service import answer_question
+from app.schemas.query import QueryRequest
 from batch_upload import descobrir_arquivos_para_upload
 from evals.run_eval import (
     GOLDEN_DATASET_PATH,
@@ -75,6 +76,10 @@ class TelemetryAndCostTests(unittest.TestCase):
         cost = estimate_llm_cost_usd("gemini-2.5-flash", prompt_tokens=1_000_000, completion_tokens=500_000)
         # 0.15 + (0.5 * 0.60) = 0.45
         self.assertAlmostEqual(cost, 0.45, places=6)
+
+        cost_lite = estimate_llm_cost_usd("gemini-3.5-flash-lite", prompt_tokens=2322, completion_tokens=99)
+        self.assertGreater(cost_lite, 0.0)
+        self.assertAlmostEqual(cost_lite, 0.000272, places=6)
 
     def test_schema_migration_adds_telemetry_columns(self):
         engine = create_engine("sqlite:///:memory:")
@@ -157,6 +162,22 @@ class GoldenDatasetAndEvalTests(unittest.TestCase):
     def test_doc_types_has_8_official_categories(self):
         self.assertEqual(len(DOC_TYPES), 8)
         self.assertEqual(len(set(DOC_TYPES)), 8)
+
+    def test_query_request_sanitizes_swagger_placeholder(self):
+        req1 = QueryRequest(question="Quem é Dagberto?", doc_type_filter="string")
+        self.assertIsNone(req1.doc_type_filter)
+
+        req2 = QueryRequest(question="Quem é Dagberto?", doc_type_filter="   ")
+        self.assertIsNone(req2.doc_type_filter)
+
+        req3 = QueryRequest(question="Quem é Dagberto?", doc_type_filter="null")
+        self.assertIsNone(req3.doc_type_filter)
+
+        req4 = QueryRequest(question="Quem é Dagberto?", doc_type_filter="Projeto_de_Lei")
+        self.assertEqual(req4.doc_type_filter, "Projeto_de_Lei")
+
+        req5 = QueryRequest(question="Quem é Dagberto?", doc_type_filter="Pauta_Legislativa")
+        self.assertEqual(req5.doc_type_filter, "Pauta_Sessao")
 
     def test_prompt_versions_and_citation_extraction(self):
         self.assertIn("v1", PROMPT_VERSIONS)
