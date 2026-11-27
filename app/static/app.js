@@ -9,6 +9,7 @@ const DOC_TYPES = [
   'Mocao',
   'Parecer_Comissao',
   'Requerimento_Legislativo',
+  'Materia_Legislativa',
   'Regimento_e_LOM',
 ];
 

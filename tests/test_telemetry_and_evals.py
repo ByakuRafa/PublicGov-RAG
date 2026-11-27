@@ -34,6 +34,7 @@ from app.core.telemetry import estimate_llm_cost_usd, extract_token_usage
 from app.db.models import Base, DocumentModel, QueryLogModel, ensure_query_logs_schema
 from app.services.agent_service import (
     PROMPT_VERSIONS,
+    _build_agent_graph,
     _extract_cited_sources,
     get_system_prompt,
     run_legislative_agent,
@@ -44,10 +45,12 @@ from batch_upload import descobrir_arquivos_para_upload
 from evals.run_eval import (
     GOLDEN_DATASET_PATH,
     inspect_corpus_coverage,
+    is_abstention_response,
     render_comparison_markdown,
     score_prediction,
     summarize_prompt_run,
 )
+from sapl_downloader import LookupCatalog, classify_materia
 
 
 class TelemetryAndCostTests(unittest.TestCase):
@@ -159,9 +162,10 @@ class TelemetryAndCostTests(unittest.TestCase):
 
 
 class GoldenDatasetAndEvalTests(unittest.TestCase):
-    def test_doc_types_has_8_official_categories(self):
-        self.assertEqual(len(DOC_TYPES), 8)
-        self.assertEqual(len(set(DOC_TYPES)), 8)
+    def test_doc_types_has_9_official_categories(self):
+        self.assertEqual(len(DOC_TYPES), 9)
+        self.assertEqual(len(set(DOC_TYPES)), 9)
+        self.assertIn("Materia_Legislativa", DOC_TYPES)
 
     def test_query_request_sanitizes_swagger_placeholder(self):
         req1 = QueryRequest(question="Quem é Dagberto?", doc_type_filter="string")
@@ -354,7 +358,7 @@ class GoldenDatasetAndEvalTests(unittest.TestCase):
             cov = inspect_corpus_coverage(db=db)
             self.assertEqual(cov["indexed_documents_count"], 2)
             self.assertEqual(cov["categories_covered_count"], 2)
-            self.assertEqual(cov["categories_total_count"], 8)
+            self.assertEqual(cov["categories_total_count"], 9)
             self.assertIn("Ata_Sessao", cov["covered_categories"])
             self.assertIn("Parecer_Comissao", cov["missing_categories"])
         finally:
@@ -370,6 +374,82 @@ class GoldenDatasetAndEvalTests(unittest.TestCase):
                 [(p.name, dt) for p, dt in discovered],
                 [("root_doc.pdf", "Pauta_Sessao"), ("ata.pdf", "Ata_Sessao")],
             )
+
+    def test_agent_graph_stops_gracefully_after_max_tool_rounds(self):
+        class StubBoundLLM:
+            def __init__(self, parent):
+                self.parent = parent
+
+            def invoke(self, messages):
+                self.parent.bound_calls += 1
+                return AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": f"call_{self.parent.bound_calls}",
+                            "name": "pedir_esclarecimento_ao_cidadao",
+                            "args": {"motivo": "busca", "sugestao_perguntas": ["detalhe?"]},
+                        }
+                    ],
+                )
+
+        class StubLLM:
+            def __init__(self, *args, **kwargs):
+                self.bound_calls = 0
+                self.unbound_calls = 0
+
+            def bind_tools(self, tools):
+                return StubBoundLLM(self)
+
+            def invoke(self, messages):
+                self.unbound_calls += 1
+                return AIMessage(content="Não foi possível localizar a informação nos registros indexados.")
+
+        stub_llm = StubLLM()
+        with patch("app.services.agent_service.ChatGoogleGenerativeAI", return_value=stub_llm):
+            graph = _build_agent_graph(prompt_version="v1")
+            result = asyncio.run(
+                graph.ainvoke(
+                    {"messages": [HumanMessage(content="Pergunta sem fim")]},
+                    config={"recursion_limit": 8},
+                )
+            )
+
+        self.assertEqual(stub_llm.bound_calls, 3)
+        self.assertEqual(stub_llm.unbound_calls, 1)
+        self.assertIn("Não foi possível localizar", result["messages"][-1].content)
+
+    def test_sapl_classify_materia_and_abstention_patterns(self):
+        catalog = LookupCatalog(
+            tipos_materia={
+                34: {"id": 34, "sigla": "SUB", "descricao": "Substitutivo"},
+                24: {"id": 24, "sigla": "RM", "descricao": "Resolução de Mesa"},
+                28: {"id": 28, "sigla": "VC", "descricao": "Voto de Congratulação"},
+                29: {"id": 29, "sigla": "VP", "descricao": "Voto de Pesar"},
+                21: {"id": 21, "sigla": "PU", "descricao": "Pedido de Urgência"},
+                30: {"id": 30, "sigla": "PD", "descricao": "Pedido de Diligência"},
+                41: {"id": 41, "sigla": "ARPI", "descricao": "Anexo de Resp. PI"},
+                19: {"id": 19, "sigla": "OF", "descricao": "Ofícios"},
+                4: {"id": 4, "sigla": "MSG", "descricao": "Mensagem"},
+                12: {"id": 12, "sigla": "REC", "descricao": "Recurso"},
+                25: {"id": 25, "sigla": "CONV", "descricao": "Convite"},
+            },
+            tipos_documento_acessorio={},
+            tipos_norma={},
+            tipos_sessao={},
+        )
+        self.assertEqual(classify_materia(34, catalog), "Projeto_de_Lei")
+        self.assertEqual(classify_materia(24, catalog), "Lei_Municipal")
+        self.assertEqual(classify_materia(28, catalog), "Mocao")
+        self.assertEqual(classify_materia(29, catalog), "Mocao")
+        self.assertEqual(classify_materia(21, catalog), "Requerimento_Legislativo")
+        self.assertEqual(classify_materia(30, catalog), "Requerimento_Legislativo")
+        self.assertEqual(classify_materia(41, catalog), "Requerimento_Legislativo")
+        for fallback_id in (19, 4, 12, 25):
+            self.assertEqual(classify_materia(fallback_id, catalog), "Materia_Legislativa")
+
+        self.assertTrue(is_abstention_response("Não há menção sobre esse tema nos registros."))
+        self.assertTrue(is_abstention_response("Trata-se de rotinas administrativas internas fora do escopo."))
 
 
 if __name__ == "__main__":

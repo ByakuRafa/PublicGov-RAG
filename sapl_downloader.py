@@ -243,30 +243,43 @@ def _extract_sigla_desc(lookup: Dict[int, Dict[str, Any]], tipo_id: Any) -> Tupl
     return sigla, desc
 
 
-def classify_materia(tipo_id: Any, catalog: LookupCatalog) -> Optional[str]:
+def classify_materia(tipo_id: Any, catalog: LookupCatalog) -> str:
+    """Classifica qualquer tipo de matéria legislativa do SAPL nas categorias oficiais."""
     sigla, desc = _extract_sigla_desc(catalog.tipos_materia, tipo_id)
-    if "mocao" in desc or sigla in {"moc", "mocao"}:
+    if (
+        "mocao" in desc
+        or "voto de congratulacao" in desc
+        or "voto de pesar" in desc
+        or sigla in {"moc", "mocao", "vc", "vp"}
+    ):
         return "Mocao"
     if (
         "requerimento" in desc
         or "pedido de providencia" in desc
         or "pedido de informacao" in desc
+        or "pedido de urgencia" in desc
+        or "pedido de diligencia" in desc
         or "indicacao" in desc
-        or sigla in {"req", "requerimento", "pedpr", "pin", "ind", "peddi", "pedur"}
+        or "resp. pi" in desc
+        or "resposta a pedido" in desc
+        or sigla in {"req", "requerimento", "pedpr", "pin", "ind", "peddi", "pedur", "rpi", "rpp", "arpi"}
     ):
         return "Requerimento_Legislativo"
     if (
         "projeto" in desc
         or "emenda" in desc
         or "veto" in desc
-        or sigla in {"pl", "plo", "plc", "ple", "pll", "pdl", "pr", "emd", "vt"}
+        or "substitutivo" in desc
+        or sigla in {"pl", "plo", "plc", "ple", "pll", "pdl", "pr", "emd", "sub", "vt", "antpr", "emimp"}
     ):
         return "Projeto_de_Lei"
     if "ordem do dia" in desc or sigla in {"od"}:
         return "Pauta_Sessao"
     if "parecer" in desc or sigla in {"par", "parecer"}:
         return "Parecer_Comissao"
-    return None
+    if "resolucao de mesa" in desc or sigla in {"rm", "resm"}:
+        return "Lei_Municipal"
+    return "Materia_Legislativa"
 
 
 def classify_norma(row: Dict[str, Any], catalog: LookupCatalog) -> str:

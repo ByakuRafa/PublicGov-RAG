@@ -6,6 +6,10 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+# Evita deadlock/abort de destrutores C++ (tokenizers/OpenMP) no encerramento no macOS
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+
 from sqlalchemy import func
 
 from app.core.config import settings
@@ -22,16 +26,26 @@ RESULTS_DIR = EVALS_DIR / "results"
 ABSTENTION_PATTERNS = (
     "não foi localizada",
     "não foram localizadas",
+    "não foram encontradas informações",
+    "não foi encontrada informação",
     "não consta",
     "não constam",
     "não localizado",
     "fora do escopo",
     "não há informações",
     "não há registro",
+    "não há menção",
+    "não há dados",
+    "não há menções",
     "não encontrei",
     "não foi possível localizar",
     "não existem registros",
+    "não existe registro",
+    "não possui informações",
     "sem evidência",
+    "sem informações",
+    "rotinas administrativas internas",
+    "esgotadas as buscas",
 )
 
 
@@ -192,14 +206,18 @@ def _compute_ragas_metrics(predictions: List[Dict[str, Any]]) -> Dict[str, Any]:
             "ground_truth": [p["ground_truth"] for p in predictions],
         }
     )
+    judge_model = os.getenv("EVAL_JUDGE_MODEL") or settings.GEMINI_MODEL
     judge_llm = LangchainLLMWrapper(
         ChatGoogleGenerativeAI(
-            model=settings.GEMINI_MODEL,
+            model=judge_model,
             temperature=0.0,
             google_api_key=settings.GOOGLE_API_KEY,
         )
     )
     judge_embeddings = LangchainEmbeddingsWrapper(get_embeddings())
+
+    # strictness=1 evita múltiplas gerações por item que resultam em NaN com modelos lite
+    answer_relevancy.strictness = 1
 
     ragas_result = evaluate(
         dataset=ragas_dataset,
@@ -209,9 +227,18 @@ def _compute_ragas_metrics(predictions: List[Dict[str, Any]]) -> Dict[str, Any]:
         run_config=RunConfig(max_workers=1, max_retries=5),
     )
     df = ragas_result.to_pandas()
+
+    def _safe_mean(col: str) -> float:
+        series = df[col].dropna()
+        if len(series) < len(df):
+            print(f"[AVISO RAGAS] '{col}': {len(series)}/{len(df)} linhas válidas (ignorando NaN).")
+        if series.empty:
+            return float("nan")
+        return round(float(series.mean()), 4)
+
     return {
-        "faithfulness": round(float(df["faithfulness"].mean()), 4),
-        "answer_relevancy": round(float(df["answer_relevancy"].mean()), 4),
+        "faithfulness": _safe_mean("faithfulness"),
+        "answer_relevancy": _safe_mean("answer_relevancy"),
     }
 
 

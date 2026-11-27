@@ -29,12 +29,12 @@ Use as ferramentas disponíveis para pesquisar os documentos legislativos da Câ
 AGENT_PROMPT_V2 = """Você é o 'Oráculo PublicGov', agente especialista na legislação municipal, proposições, pautas e atas da Câmara Municipal de Vereadores de Santana do Livramento (RS).
 
 Regras de atuação e roteamento:
-1. Para perguntas sobre leis vigentes, projetos de lei (PLO/PLC), pareceres, Lei Orgânica ou Regimento Interno (Resolução nº 1.252/2016), use a ferramenta `consultar_legislacao_municipal`.
-2. Para perguntas sobre pautas de sessão, atas de votação, moções (ex.: Moção de Apoio) ou requerimentos legislativos, use a ferramenta `consultar_pautas_e_votacoes`.
+1. Para perguntas sobre leis vigentes, projetos de lei (PLO/PLC/PDL/PR/PELOM), emendas, substitutivos, vetos, pareceres, Lei Orgânica, Regimento Interno (Resolução nº 1.252/2016) ou demais matérias legislativas (`Materia_Legislativa`, como ofícios, mensagens e recursos), use a ferramenta `consultar_legislacao_municipal`.
+2. Para perguntas sobre pautas de sessão, atas de votação, moções (ex.: Moção de Apoio, votos de pesar/congratulação), requerimentos legislativos ou matérias em tramitação (`Materia_Legislativa`), use a ferramenta `consultar_pautas_e_votacoes`.
 3. Para saber quais arquivos constam na base, use `listar_documentos_indexados`.
 4. Se a pergunta do cidadão for muito vaga ou ambígua (por exemplo, "me fale sobre o projeto" sem indicar qual assunto, número ou tipo), acione `pedir_esclarecimento_ao_cidadao` pedindo detalhes de forma educada.
 5. Escopo estrito e abstenção obrigatória: se a pergunta tratar de rotinas administrativas internas (diárias, férias, folha de pagamento), atos do Executivo alheios à Câmara (multas de trânsito, concursos da Prefeitura) ou decisões judiciais externas, ou se a informação solicitada NÃO constar nos trechos retornados pelas ferramentas, informe explicitamente que a informação não foi localizada nos registros indexados e NÃO especule.
-6. Fidelidade e citação: responda utilizando APENAS os trechos recuperados pelas ferramentas. Nunca invente números, valores, datas, artigos ou nomes. Sempre que responder com base em um documento, cite explicitamente o arquivo fonte (`source_file`, ex.: `2758.pdf`). Caso não haja evidência suficiente, NÃO cite arquivos como fonte."""
+6. Fidelidade e citação obrigatória: responda utilizando APENAS os trechos recuperados pelas ferramentas. Nunca invente números, valores, datas, artigos ou nomes. Em TODA resposta baseada em evidência recuperada, cite explicitamente o nome exato do arquivo fonte (`source_file`, ex.: `2758.pdf`) no texto ou ao final em `Fonte: <arquivo>.pdf`. Nunca omita o `.pdf` quando houver evidência; caso não haja evidência suficiente, NÃO cite arquivos como fonte."""
 
 AGENT_SYSTEM_PROMPT = AGENT_PROMPT_V2
 
@@ -92,7 +92,13 @@ def consultar_legislacao_municipal(consulta: str) -> str:
         docs = hybrid_retrieve_and_rerank(query=consulta, doc_type_filter=explicit_filter)
         return _format_retrieval_payload(docs)
 
-    target_types = ["Lei_Municipal", "Projeto_de_Lei", "Regimento_e_LOM", "Parecer_Comissao"]
+    target_types = [
+        "Lei_Municipal",
+        "Projeto_de_Lei",
+        "Regimento_e_LOM",
+        "Parecer_Comissao",
+        "Materia_Legislativa",
+    ]
     docs = hybrid_retrieve_and_rerank(query=consulta, doc_types=target_types)
     if docs:
         return _format_retrieval_payload(docs)
@@ -119,6 +125,7 @@ def consultar_pautas_e_votacoes(consulta: str) -> str:
         "Ata_Sessao",
         "Mocao",
         "Requerimento_Legislativo",
+        "Materia_Legislativa",
     ]
     docs = hybrid_retrieve_and_rerank(query=consulta, doc_types=target_types)
     if docs:
@@ -171,22 +178,49 @@ TOOLS = [
 ]
 
 
+MAX_TOOL_ROUNDS = 3
+
+
 def _build_agent_graph(prompt_version: str = "v2"):
     system_prompt = get_system_prompt(prompt_version)
-    llm = ChatGoogleGenerativeAI(
+    base_llm = ChatGoogleGenerativeAI(
         model=settings.GEMINI_MODEL,
         temperature=0.1,
         google_api_key=settings.GOOGLE_API_KEY,
-    ).bind_tools(TOOLS)
+    )
+    llm_with_tools = base_llm.bind_tools(TOOLS)
+
+    def _count_tool_rounds(messages: List[BaseMessage]) -> int:
+        return sum(
+            1
+            for msg in messages
+            if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None)
+        )
 
     def agent_node(state: AgentState) -> Dict[str, Any]:
         messages = [SystemMessage(content=system_prompt)] + list(state["messages"])
-        response = llm.invoke(messages)
+        if _count_tool_rounds(state["messages"]) >= MAX_TOOL_ROUNDS:
+            messages.append(
+                SystemMessage(
+                    content=(
+                        "Limite de buscas atingido. Não chame mais ferramentas. "
+                        "Responda agora ao usuário usando apenas os trechos já recuperados "
+                        "ou informe que não foi possível localizar a informação nos registros indexados."
+                    )
+                )
+            )
+            response = base_llm.invoke(messages)
+        else:
+            response = llm_with_tools.invoke(messages)
         return {"messages": [response]}
 
     def route_after_agent(state: AgentState) -> str:
         last_message = state["messages"][-1]
-        if isinstance(last_message, AIMessage) and getattr(last_message, "tool_calls", None):
+        if (
+            isinstance(last_message, AIMessage)
+            and getattr(last_message, "tool_calls", None)
+            and _count_tool_rounds(state["messages"]) <= MAX_TOOL_ROUNDS
+        ):
             return "tools"
         return END
 
@@ -246,7 +280,7 @@ async def run_legislative_agent(
         graph = _build_agent_graph(prompt_version=prompt_version)
         callbacks = get_langfuse_callbacks()
         invoke_config: Dict[str, Any] = {
-            "recursion_limit": 8,
+            "recursion_limit": 12,
             "metadata": {
                 "prompt_version": prompt_version,
                 "doc_type_filter": doc_type_filter,
